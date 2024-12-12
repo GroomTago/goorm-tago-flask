@@ -2,7 +2,7 @@ from flask import Flask, jsonify, request
 from sdk.api.message import Message
 from sdk.exceptions import CoolsmsException
 from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
 import atexit
@@ -34,24 +34,17 @@ with app.app_context():
     from models.taxi_reservation import TaxiReservation
     db.create_all()
 
-# 데이터베이스 연결 확인 함수
-def check_database_connection():
-    try:
-        with app.app_context():
-            db.session.execute(text('SELECT 1'))
-            print("Database connection successful")
-    except SQLAlchemyError as e:
-        print(f"Database connection Failed: {e}")
+# 스케줄러 생성
+scheduler = BackgroundScheduler()
+scheduler.start()
 
-# 예약 문자 발송 함수
-def send_scheduled_sms():
+atexit.register(lambda: scheduler.shutdown())
+
+# 문자 발송 함수
+def send_sms(reservation_id):
     with app.app_context():
-        reservations = TaxiReservation.query.filter(
-            TaxiReservation.call_type == 'later',
-            TaxiReservation.reservation_datetime <= datetime.now()
-        ).all()
-        
-        for reservation in reservations:
+        reservation = TaxiReservation.query.get(reservation_id)
+        if reservation:
             params = {
                 'to': reservation.reservation_phone_number,
                 'from': SEND_PHONE_NUMBER,
@@ -65,54 +58,63 @@ def send_scheduled_sms():
             db.session.delete(reservation)
             db.session.commit()
 
-# 스케줄러 설정
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=send_scheduled_sms, trigger='cron', hour='0,3,6,9,12,15,18,21', minute=0)
-scheduler.start()
-
-atexit.register(lambda: scheduler.shutdown())
-
-check_database_connection()
-
-@app.route("/", methods=['GET'])
-def server_status():
-    return jsonify({'status': 'ok'})
-
 # 택시 예약 문자 발송 엔드포인트
 @app.route("/reservation/taxi", methods=['POST'])
 def reservation_taxi():
     request_data = request.get_json()
     call_type = request.args.get("callType")
 
+    # 현재 시간 설정 (now인 경우)
+    reservation_time = datetime.now() if call_type == 'now' else datetime.strptime(request_data["reservation_time"], "%Y-%m-%dT%H:%M:%S")
+
     new_reservation = TaxiReservation(
         user_id=request_data["user_id"],
         starting_point=request_data["starting_point"],
         arrival_point=request_data["arrival_point"],
         reservation_phone_number=request_data["reservation_phone_number"],
-        reservation_datetime=datetime.strptime(request_data["reservation_time"], "%Y-%m-%dT%H:%M:%S") if call_type == 'later' else datetime.now(),
+        reservation_datetime=reservation_time,
         call_type=call_type
     )
 
     db.session.add(new_reservation)
     db.session.commit()
 
-    # 문자 발송
-    params = {
-        'to': request_data["reservation_phone_number"],
-        'from': SEND_PHONE_NUMBER,
-        'text': f'출발지: {request_data["starting_point"]}, '
-                f'도착지: {request_data["arrival_point"]}'
-    }
+    # 문자 발송 (callType이 'now'인 경우 즉시 발송)
+    if call_type == 'now':
+        params = {
+            'to': request_data["reservation_phone_number"],
+            'from': SEND_PHONE_NUMBER,
+            'text': f'출발지: {request_data["starting_point"]}, '
+                    f'도착지: {request_data["arrival_point"]}'
+        }
 
-    cool = Message(COOL_SMS_API_KEY, COOL_SMS_API_SECRET)
-    response = cool.send(params)
-    print(response)
+        cool = Message(COOL_SMS_API_KEY, COOL_SMS_API_SECRET)
+        response = cool.send(params)
+        print(response)
 
-    return jsonify({
-        "success": True,
-        "message": "SMS sent successfully.",
-        "response": response
-    }), 200
+        return jsonify({
+            "success": True,
+            "message": "SMS sent successfully.",
+            "response": response
+        }), 200
+
+    # 문자 예약 (callType이 'later'인 경우)
+    elif call_type == 'later':
+        # send_time = reservation_time - timedelta(hours=2) # 프로덕션용
+        send_time = reservation_time - timedelta(minutes=5) # 개발용
+        scheduler.add_job(func=send_sms, trigger='date', run_date=send_time, args=[new_reservation.id])
+        print(f"SMS scheduled for: {send_time}")
+
+        return jsonify({
+            "success": True,
+            "message": "Reservation saved successfully."
+        }), 200
+
+
+# 서버 상태 확인 엔드포인트
+@app.route("/", methods=['GET'])
+def server_status():
+    return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     app.run(debug=IS_DEV)
