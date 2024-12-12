@@ -5,6 +5,7 @@ class TaxiReservation(db.Model):
     __tablename__ = 'taxi_reservations'
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String(255), nullable=False)
     starting_point = db.Column(db.String(255), nullable=False)
     arrival_point = db.Column(db.String(255), nullable=False)
     reservation_phone_number = db.Column(db.String(255), nullable=False)
