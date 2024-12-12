@@ -32,6 +32,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = SQLALCHEMY_TRACK_MODIFICATIONS
 db = SQLAlchemy(app)
 
+# 분리 필요 함수 Start
 # 데이터베이스 연결 확인 함수 (TODO: 리팩토링)
 def check_database_connection():
     try:
@@ -40,6 +41,31 @@ def check_database_connection():
             print("Database connection successful")
     except SQLAlchemyError as e:
         print(f"Database connection Failed: {e}")
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=send_scheduled_sms, trigger='cron', hour=0, minute=0)
+scheduler.start()
+
+atexit.register(lambda: scheduler.shutdown())
+# 예약 문자 발송
+def send_scheduled_sms():
+     reservations = TaxiReservation.query.filter(
+          TaxiReservation.reservation_datetime <= datetime.now()
+     ).all
+     for reservation in reservations:
+          params = {
+               'to': reservation.reservation_phone_number,
+               'from': SEND_PHONE_NUMBER,
+               'text': f'출발지: {reservation.starting_point}, '
+                        f'도착지: {reservation.arrival_point}'
+          }
+          cool = Message(COOL_SMS_API_KEY, COOL_SMS_API_SECRET)
+          response = cool.send(params)
+          print(response)
+
+          db.session.delete(reservation)
+          db.session.commit()
+# 분리 필요 함수 End
 check_database_connection()
 
 @app.route("/", methods = ['GET'])
