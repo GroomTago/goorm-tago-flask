@@ -41,12 +41,6 @@ def check_database_connection():
             print("Database connection successful")
     except SQLAlchemyError as e:
         print(f"Database connection Failed: {e}")
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=send_scheduled_sms, trigger='cron', hour=0, minute=0)
-scheduler.start()
-
-atexit.register(lambda: scheduler.shutdown())
 # 예약 문자 발송
 def send_scheduled_sms():
      reservations = TaxiReservation.query.filter(
@@ -65,8 +59,16 @@ def send_scheduled_sms():
 
           db.session.delete(reservation)
           db.session.commit()
-# 분리 필요 함수 End
+
+
+atexit.register(lambda: scheduler.shutdown())
+
 check_database_connection()
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=send_scheduled_sms, trigger='cron', hour=0, minute=0)
+scheduler.start()
+# 분리 필요 함수 End
 
 @app.route("/", methods = ['GET'])
 def server_status():
