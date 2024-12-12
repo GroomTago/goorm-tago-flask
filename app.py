@@ -138,13 +138,13 @@ def reservation_taxi():
         }
 
         cool = Message(COOL_SMS_API_KEY, COOL_SMS_API_SECRET)
-        # response = cool.send(params)
-        # print(response)
+        response = cool.send(params)
+        print(response)
 
         return jsonify({
             "success": True,
             "message": "SMS sent successfully.",
-            # "response": response
+            "response": response
         }), 200
 
     # 문자 예약 (callType이 'later'인 경우)
