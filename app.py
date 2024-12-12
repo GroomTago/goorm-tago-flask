@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS #CORS 추가
 from sdk.api.message import Message
 from sdk.exceptions import CoolsmsException
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -17,6 +18,8 @@ load_dotenv()
 
 # Flask 앱 생성
 app = Flask(__name__)
+
+CORS(app)
 
 # 환경 변수 설정
 IS_DEV = os.getenv("IS_DEV")
