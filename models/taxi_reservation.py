@@ -1,4 +1,4 @@
-from app import db
+from extensions.database import db
 from datetime import datetime
 
 class TaxiReservation(db.Model):
