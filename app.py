@@ -10,7 +10,7 @@ import os
 from dotenv import load_dotenv
 
 # Kakao Maps API 함수 import
-from utils.geocode import get_coordinates
+from utils.geocode import get_coordinates, haversine
 
 # 환경 변수 로드
 load_dotenv()
@@ -159,6 +159,49 @@ def reservation_taxi():
             "message": "Reservation saved successfully."
         }), 200
 
+# 거리 계산 API
+@app.route("/nearby/reservations", methods=['POST'])
+def nearby_reservations():
+    data = request.get_json()
+    starting_point = data.get("starting_point")
+    arrival_point = data.get("arrival_point")
+
+    # 출발지와 도착지 좌표 변환
+    starting_coords = get_coordinates(starting_point)
+    arrival_coords = get_coordinates(arrival_point)
+
+    if not starting_coords or not arrival_coords:
+        return jsonify({"success": False, "message": "출발지 또는 도착지 주소를 찾을 수 없습니다."}), 400
+
+    starting_lat = float(starting_coords["latitude"])
+    starting_lon = float(starting_coords["longitude"])
+
+    try:
+        # 데이터베이스에서 모든 예약 데이터 가져오기
+        reservations = TaxiReservation.query.all()
+
+        nearby_reservations = []
+
+        for reservation in reservations:
+            # Decimal 타입을 float으로 변환
+            reservation_lat = float(reservation.starting_point_latitude)
+            reservation_lon = float(reservation.starting_point_longitude)
+
+            distance = haversine(starting_lat, starting_lon, reservation_lat, reservation_lon)
+            if distance <= 1.0:  # 1km 이내
+                nearby_reservations.append({
+                    "id": reservation.id,
+                    "starting_point": reservation.starting_point,
+                    "arrival_point": reservation.arrival_point,
+                    "distance_km": round(distance, 2),
+                    "reservation_phone_number": reservation.reservation_phone_number,
+                    "call_type": reservation.call_type
+                })
+
+        return jsonify({"success": True, "nearby_reservations": nearby_reservations}), 200
+
+    except SQLAlchemyError as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 # 서버 상태 확인 엔드포인트
 @app.route("/", methods=['GET'])
