@@ -22,6 +22,8 @@ COOL_SMS_API_SECRET = os.getenv("COOL_SMS_API_SECRET")
 SEND_PHONE_NUMBER = os.getenv("SEND_PHONE_NUMBER")
 SQLALCHEMY_DATABASE_URI = os.getenv("SQLALCHEMY_DATABASE_URI")
 SQLALCHEMY_TRACK_MODIFICATIONS = os.getenv("SQLALCHEMY_TRACK_MODIFICATIONS")
+FLASK_DEBUG = os.getenv("FLASK_DEBUG")
+FLASK_PORT = os.getenv("FLASK_PORT")
 
 # ORM 설정
 app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
@@ -117,4 +119,4 @@ def server_status():
     return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
-    app.run(debug=IS_DEV)
+    app.run(debug=FLASK_DEBUG, port=FLASK_PORT)
