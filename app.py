@@ -9,6 +9,9 @@ import atexit
 import os
 from dotenv import load_dotenv
 
+# Kakao Maps API 함수 import
+from utils.geocode import get_coordinates
+
 # 환경 변수 로드
 load_dotenv()
 
@@ -60,12 +63,10 @@ def send_sms(reservation_id):
             db.session.delete(reservation)
             db.session.commit()
 
-# 택시 예약 문자 발송 엔드포인트
-@app.route("/reservation/taxi", methods=['POST'])
-def reservation_taxi():
+@app.route("/test/reservation/taxi", methods=['POST'])
+def test_reservation_taxi_now():
     request_data = request.get_json()
     call_type = request.args.get("callType")
-
     # 현재 시간 설정 (now인 경우)
     reservation_time = datetime.now() if call_type == 'now' else datetime.strptime(request_data["reservation_time"], "%Y-%m-%dT%H:%M:%S")
 
@@ -73,6 +74,49 @@ def reservation_taxi():
         user_id=request_data["user_id"],
         starting_point=request_data["starting_point"],
         arrival_point=request_data["arrival_point"],
+        reservation_phone_number=request_data["reservation_phone_number"],
+        reservation_datetime=reservation_time,
+        call_type=call_type
+    )
+    print(f'calltype: {call_type}')
+    print(f'new_reservation: {new_reservation}')
+    db.session.add(new_reservation)
+    db.session.commit()
+    return 'ok'
+
+# 택시 예약 문자 발송 엔드포인트
+@app.route("/reservation/taxi", methods=['POST'])
+def reservation_taxi():
+    request_data = request.get_json()
+    call_type = request.args.get("callType")
+
+    # 출발지 및 도착지 좌표 가져오기
+    starting_coordinates = get_coordinates(request_data["starting_point"])
+    if not starting_coordinates:
+        return jsonify({
+            "success": False,
+            "message": "출발지 주소를 찾을 수 없습니다."
+        }), 400
+    
+    arrival_coordinates = get_coordinates(request_data["arrival_point"])
+    if not arrival_coordinates:
+        return jsonify({
+            "success": False,
+            "message": "도착지 주소를 찾을 수 없습니다."
+        }), 400
+
+
+    # 현재 시간 설정 (now인 경우)
+    reservation_time = datetime.now() if call_type == 'now' else datetime.strptime(request_data["reservation_time"], "%Y-%m-%dT%H:%M:%S")
+
+    new_reservation = TaxiReservation(
+        user_id=request_data["user_id"],
+        starting_point=request_data["starting_point"],
+        starting_point_latitude=starting_coordinates["latitude"],
+        starting_point_longitude=starting_coordinates["longitude"],
+        arrival_point=request_data["arrival_point"],
+        arrival_point_latitude=arrival_coordinates["latitude"],
+        arrival_point_longitude=arrival_coordinates["longitude"],
         reservation_phone_number=request_data["reservation_phone_number"],
         reservation_datetime=reservation_time,
         call_type=call_type
@@ -86,8 +130,11 @@ def reservation_taxi():
         params = {
             'to': request_data["reservation_phone_number"],
             'from': SEND_PHONE_NUMBER,
-            'text': f'출발지: {request_data["starting_point"]}, '
-                    f'도착지: {request_data["arrival_point"]}'
+            'text': f'안녕하세요. 택시 호출 요청드립니다.\n '
+                    f'출발지: {request_data["starting_point"]}\n '
+                    f'도착지: {request_data["arrival_point"]}\n '
+                    f'배차 여부는 아래 번호로 반드시 전화해주세요.\n'
+                    f'{SEND_PHONE_NUMBER}'
         }
 
         cool = Message(COOL_SMS_API_KEY, COOL_SMS_API_SECRET)
@@ -119,4 +166,4 @@ def server_status():
     return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
-    app.run(debug=FLASK_DEBUG, port=FLASK_PORT)
+    app.run(host='0.0.0.0', debug=FLASK_DEBUG, port=FLASK_PORT)
