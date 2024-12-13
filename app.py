@@ -9,6 +9,7 @@ from sqlalchemy import text
 import atexit
 import os
 from dotenv import load_dotenv
+from flask_cors import CORS
 
 # Kakao Maps API 함수 import
 from utils.geocode import get_coordinates, haversine
@@ -19,7 +20,7 @@ load_dotenv()
 # Flask 앱 생성
 app = Flask(__name__)
 
-CORS(app)
+CORS(app, supports_credentials=True)
 
 # 환경 변수 설정
 IS_DEV = os.getenv("IS_DEV")
@@ -56,8 +57,11 @@ def send_sms(reservation_id):
             params = {
                 'to': reservation.reservation_phone_number,
                 'from': SEND_PHONE_NUMBER,
-                'text': f'출발지: {reservation.starting_point}, '
-                        f'도착지: {reservation.arrival_point}'
+                'text': f'안녕하세요. 택시 호출 요청드립니다.\n '
+                        f'출발지: {request_data["starting_point"]}\n '
+                        f'도착지: {request_data["arrival_point"]}\n '
+                        f'배차 여부는 아래 번호로 반드시 전화해주세요.\n'
+                        f'{SEND_PHONE_NUMBER}'
             }
             cool = Message(COOL_SMS_API_KEY, COOL_SMS_API_SECRET)
             response = cool.send(params)
@@ -90,6 +94,8 @@ def test_reservation_taxi_now():
 # 택시 예약 문자 발송 엔드포인트
 @app.route("/reservation/taxi", methods=['POST'])
 def reservation_taxi():
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
     request_data = request.get_json()
     call_type = request.args.get("callType")
 
@@ -210,6 +216,25 @@ def nearby_reservations():
 @app.route("/", methods=['GET'])
 def server_status():
     return jsonify({'status': 'ok'})
+
+# CORS(app, origins=['https://k28f46a14160fa.user-app.krampoline.com', 'https://www.k28f46a14160fa.user-app.krampoline.com'])
+# CORS(app, origins=['http://localhost:3000'])
+# CORS(app, supports_credentials=True)
+# CORS(app, resources={r"/api/*": {"origins": "*"}})
+# CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
+
+# @app.after_request
+# def after_request(response):
+#     origin = request.headers.get('Origin')
+#     # allowed_origins = ['http://localhost:3000/', 'https://k28f46a14160fa.user-app.krampoline.com', 'https://www.k28f46a14160fa.user-app.krampoline.com']
+#     allowed_origins = ['http://localhost:3000']
+#     if origin in allowed_origins:
+#         response.headers.add('Access-Control-Allow-Origin', origin)
+#     # response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+#     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,ngrok-skip-browser-warning')
+#     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,PUT,DELETE')
+#     response.headers.add('Access-Control-Allow-Credentials', 'true')
+#     return response
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=FLASK_DEBUG, port=FLASK_PORT)
